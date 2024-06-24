@@ -1,0 +1,266 @@
+---
+title: "Practicum Assignment_HS"
+author: "Humpreet Sahans"
+date: "2024-06-18"
+output: word_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+
+#Installing and loading the necessary packages
+#----------------------------------------------------------------------
+  
+#install.packages("readxl")
+#install.packages("writexl")
+library(readxl)
+library(writexl)
+library(tidyverse)
+library(stringr)
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+#Reading the excel files and combining them
+#----------------------------------------------------------------------
+  
+#Local path to the Excel file
+path <- "C:/Users/HUMPR/Downloads/GRAIN---Land-grab-deals---Jan-2012-2.xlsx"
+
+#Reading the two sheets from the Excel file
+grain_sheet1 <- read_excel(path, sheet = "Sheet1",
+        col_types = c("text", 
+        "text", "text", "text", "numeric", 
+        "text", "text", "numeric", "text", 
+        "text"))
+grain_sheet2 <- read_excel(path, sheet = "Sheet2",
+         col_types = c("text", 
+        "text", "text", "text", "numeric", 
+        "text", "text", "numeric", "text", 
+        "text"))
+
+#Combining the sheets into one dataframe
+grain_total <- bind_rows(grain_sheet1, grain_sheet2)
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+#Inspection of the data & Formatting the columns to improve clarity
+#----------------------------------------------------------------------
+  
+#There were no duplicate records in the data.
+
+#Checking for missing values in each column:
+missing_data <- grain_total %>%
+  summarize_all(~ sum(is.na(.)))
+
+#Summarizing the datase to understand the structure better
+summary(grain_total)
+
+#Renaming column names by replacing spaces with underscores '_' for easier access
+grain_total <- grain_total %>%
+  rename("Projected_Investment" = "Projected investment",
+    "Status_Of_Deal" = "Status of deal")
+
+
+#Removing trailing and leading spaces from the data to avoid redundant values and consolidate similar categories
+grain_total <- grain_total %>%
+  mutate(Sector = str_trim(Sector),
+         Production = str_trim(Production,),
+         Status_Of_Deal = str_trim(Status_Of_Deal))
+
+#Converting the first letter of every word to uppercase to maintain clarity
+grain_total$Sector <- str_to_title(grain_total$Sector)
+grain_total$Production <- str_to_title(grain_total$Production)
+grain_total$Landgrabber <- str_to_title(grain_total$Landgrabber)
+grain_total$Status_Of_Deal <- str_to_title(grain_total$Status_Of_Deal)
+
+```
+
+
+```{r, echo=FALSE}
+
+#Correcting inaccuracies and duplicate values in the data
+#----------------------------------------------------------------------
+
+#1. Columns Landgrabbed & Base
+  
+#Both these columns contain Country values. We will identify and correct any spelling mistakes and eliminate repetitive values in these 2 columns.
+#First, we'll review to check any duplicate or erroneous country names by sorting the unique values. If there are any issues found, we will correct them
+
+#sort(unique(grain_total$Landgrabbed))
+#sort(unique(grain_total$Base))
+
+#Sorting showed many abbreviations and few country names with special characters. Hence we will create corrections for them:
+corrections <- c(
+  "Arg" = "Argentina",
+  "AUS" = "Australia",
+  "Aus" = "Australia",
+  "Côte d'Ivoire" = "Ivory Coast",
+  "Fran" = "France",
+  "Gemany" = "Germany",
+  "Gambia, The" = "The Gambia",
+  "--" = "Mozambique",
+  "RUS" = "Russia",
+  "US" = "United States",
+  "UNITED STATES" = "United States",
+  "UK" = "United Kingdom")
+
+#Applying the corrections to columns Landgrabbed and Base:
+grain_total$Landgrabbed <- ifelse(grain_total$Landgrabbed %in% names(corrections), corrections[grain_total$Landgrabbed], grain_total$Landgrabbed)
+
+grain_total$Base <- ifelse(grain_total$Base %in% names(corrections), corrections[grain_total$Base], grain_total$Base)
+
+#Checking if the required corrections were made correctly
+#sort(unique(grain_total$Landgrabbed))
+#sort(unique(grain_total$Base))
+
+
+#2. Column 'Status_of_deal'
+
+#Similarly, the data in the column 'Status of deal' shows formatting issues and spelling errors.
+
+#Sorting to check unique values
+#sort(unique(grain_total$Status_Of_Deal))
+
+#Creating corrections:
+corrections_SOD <- c(
+  "Complete" = "Done", "Don" = "Done", "Done - 15/08/2011" = "Done", "Done (50-Yr Lease)" = "Done", "Inprocess" = "In Process", "Suspended (October 2011)" = "Suspended", "Unclear" = NA)
+
+#Applying corrections:
+grain_total$Status_Of_Deal <- ifelse(grain_total$Status_Of_Deal %in% names(corrections_SOD), corrections[grain_total$Status_Of_Deal], grain_total$Status_Of_Deal)
+#sort(unique(grain_total$Status_Of_Deal))
+
+
+#3. Column 'Landgrabber'
+
+#In the 2nd column Landgrabber, there are few entries with quotation marks within the values. We need to modify those entries:
+
+grain_total$Landgrabber <- gsub('"', '', grain_total$Landgrabber)
+
+
+
+#4. Sector
+
+#From the data, we can see few missing values in the Sector & Production columns as well as several spelling errors. Without additional information, we shouldn't assume the Production values, but we can infer and fill in the missing Sector values using the data form the Production column for as many cells as possible:
+
+grain_total <- grain_total %>%
+  group_by(Production) %>%
+  mutate(Sector = ifelse(is.na(Sector), first(Sector[!is.na(Sector)]), Sector)) %>% ungroup()
+
+#Correcting short forms and repetitive values in Sector and applying them
+#sort(unique(grain_total$Sector))
+corrections_Sector <- c(
+  "Ab" = "Agribusiness", "Agribus" = "Agribusiness", "Agribussiness" = "Agribusiness", "Fin" = "Finance", "Na" = "NA")
+
+grain_total$Sector <- ifelse(grain_total$Sector %in% names(corrections_Sector), corrections[grain_total$Sector], grain_total$Sector)
+#sort(unique(grain_total$Sector))
+
+```
+
+
+```{r, echo=FALSE, include=FALSE}
+
+#5. Cleaning the 'year' column
+#----------------------------------------------------------------------
+#To check if any outliers are present in the Year column, we will plot it using a histogram and min/max values
+#ggplot(grain_total, aes(Year))+ geom_histogram()
+summary(grain_total$Year)
+
+subset_year <- grain_total[grain_total$Year > 2024| grain_total$Year<1500,]
+
+#From the above chart, we can see that there are few outliers present in the data since the minimum value is 0 and maximum is 42675, which are not appropriate values for years. To correct these, we will check the data present in the Summary column for these values.
+#Based on the information present in the Summary column, we can correct the following years to their real values:
+
+grain_total <- grain_total %>% 
+  mutate(Year = ifelse(Year == 0, 2010,
+                       ifelse(Year==17, 2008,
+                       ifelse(Year==41000, 2009,
+                       ifelse(Year==42675, 2006, Year)))))
+
+ggplot(grain_total, aes(Year))+ geom_histogram(stat='count')
+#The above histogram shows the corrected data with an outlier present near 1900
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+#6. Cleaning the Projected Investment column by creating a new numeric column
+#----------------------------------------------------------------------
+#All our investment data is in USD. But some of them is in millions and some in billions. To handle this, we will create a new numeric column by parsing the numbers and adjusting for millions and billions
+
+grain_total <- grain_total %>% 
+  mutate(Num_PI = c(parse_number(grain_total$Projected_Investment)))
+
+grain_total$Num_PI <- ifelse(grepl("million", grain_total$Projected_Investment, ignore.case = TRUE), grain_total$Num_PI*1000000,
+                   ifelse(grepl("billion", grain_total$Projected_Investment, ignore.case = TRUE), grain_total$Num_PI*1000000000, grain_total$Num_PI))
+
+#Since the numbers are huge after multiplication, we will convert them in millions for ease of plotting
+grain_total$Num_PI <- grain_total$Num_PI/1000000
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+#7. Converting Hectares data to Sq.kms
+#----------------------------------------------------------------------
+
+  #After viewing the data set, we can see there are few values which are incorrectly coded. Using the Summary sections, we need to update the correct values before processing further
+grain_total <- grain_total%>% 
+  mutate(Hectares = ifelse(Hectares == 2, 25000, Hectares))
+
+#Converting Hectares into square kilometers
+grain_total$Hectares <- grain_total$Hectares/100
+```
+
+
+#Visualizations
+-----------------------------------------------------------------------
+```{r, echo=FALSE, include=FALSE}
+
+#Plotting the Sectors by the number of deals Done or In process
+#Grouping the Sectors into buckets for easy analysis
+grain_total <- grain_total %>% 
+  mutate(Sector_Grouped = case_when(
+    grepl("Agribusiness", Sector, ignore.case = TRUE) ~ "Agribusiness",
+    grepl("Construction", Sector, ignore.case = TRUE) ~ "Construction",
+    grepl("Energy", Sector, ignore.case = TRUE) ~ "Energy",
+    grepl("Finance", Sector, ignore.case = TRUE) ~ "Finance",
+    grepl("Government", Sector, ignore.case = TRUE) ~ "Government",
+    grepl("Industrial", Sector, ignore.case = TRUE) ~ "Industrial",
+    grepl("Real Estate", Sector, ignore.case = TRUE) ~ "Real Estate",
+    TRUE ~ Sector ))
+```
+
+The below visualization illustrates the distribution of deals across the various sectors. From the data, we can see that the maximum number of deals are made in the Agribusiness sector, followed by Finance and Government:
+
+```{r, echo=FALSE}
+
+ggplot(grain_total, aes(x = reorder(Sector_Grouped, table(Sector_Grouped)[Sector_Grouped]), fill = Status_Of_Deal)) +
+  geom_bar(color="white") +
+  coord_flip() +
+  labs(title = "Distribution of deals by different sectors",
+       x = "Sector types",
+       y = "Number of deals")
+
+```
+
+However, when we look at the projected investments in these sectors, it appears that the cumulative investment in the Finance sector is higher than in the Agribusiness sector:
+
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(grain_total, aes(x = reorder(Sector_Grouped, Num_PI), y = Num_PI))+
+  geom_bar(stat = "identity")+
+  coord_flip()+ labs(title = "Projected Investments by Sectors",
+                     y = "Projected Investments (in Mil)",
+                     x = "Sector Types")
+
+```
+
+
+```{r, echo=FALSE, include=FALSE}
+#Writing the cleaned data
+#----------------------------------------------------------------------
+#Saving the cleaned dataset to local desktop
+write_xlsx(grain_total, "C:/Users/HUMPR/OneDrive/Desktop/Cleaned_Grain_Data.xlsx")
+```
+
